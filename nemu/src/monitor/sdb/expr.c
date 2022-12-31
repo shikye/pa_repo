@@ -21,7 +21,7 @@
 #include <regex.h>
 
 enum {
-  TK_NOTYPE = 256, TK_EQ,
+  TK_NOTYPE = 256, TK_EQ, TK_NUM
 
   /* TODO: Add more token types */
 
@@ -39,11 +39,18 @@ static struct rule {
   {" +", TK_NOTYPE},    // spaces
   {"\\+", '+'},         // plus
   {"==", TK_EQ},        // equal
+  {"-", '-'},
+  {"\\*",'*'},
+  {"/",'/'},
+  {"\\(",'('},
+  {"\\)",')'},
+  {"[0-9]+",TK_NUM},
+
 };
 
 #define NR_REGEX ARRLEN(rules)
 
-static regex_t re[NR_REGEX] = {};
+static regex_t re[NR_REGEX] = {};   //save the regex after compiled
 
 /* Rules are used for many times.
  * Therefore we compile them only once before any usage.
@@ -80,7 +87,7 @@ static bool make_token(char *e) {
   while (e[position] != '\0') {
     /* Try all rules one by one. */
     for (i = 0; i < NR_REGEX; i ++) {
-      if (regexec(&re[i], e + position, 1, &pmatch, 0) == 0 && pmatch.rm_so == 0) {
+      if (regexec(&re[i], e + position, 1, &pmatch, 0) == 0 && pmatch.rm_so == 0) {   //nmatch == 1, means matching one time  // rm_so == 0, relative to e+position
         char *substr_start = e + position;
         int substr_len = pmatch.rm_eo;
 
@@ -95,7 +102,20 @@ static bool make_token(char *e) {
          */
 
         switch (rules[i].token_type) {
-          default: TODO();
+          case TK_NOTYPE: break;
+          case '+': tokens[nr_token].type = '+'; ++nr_token; break;
+          case TK_EQ: tokens[nr_token].type = TK_EQ; ++nr_token; break;
+          case '-': tokens[nr_token].type = '-'; ++nr_token; break;
+          case '*': tokens[nr_token].type = '*'; ++nr_token; break;
+          case '/': tokens[nr_token].type = '/'; ++nr_token; break;
+          case '(': tokens[nr_token].type = '('; ++nr_token; break;
+          case ')': tokens[nr_token].type = ')'; ++nr_token; break;
+          case TK_NUM: tokens[nr_token].type = TK_NUM; 
+            strncpy(tokens[nr_token].str,substr_start,substr_len); 
+            tokens[nr_token].str[substr_len] = '\0'; 
+            ++nr_token; break;
+
+          default: panic("no such rule!");
         }
 
         break;
@@ -111,15 +131,111 @@ static bool make_token(char *e) {
   return true;
 }
 
+int check_parenthese(int p){
+  int position = 0;
+  
+  for(int find_right_parenthese = nr_token; find_right_parenthese > p; find_right_parenthese --){
+    if(tokens[find_right_parenthese].type == ')'){
+      position = find_right_parenthese;
+      break;
+    }
+  }
 
-word_t expr(char *e, bool *success) {
+  return position;
+}
+
+int rec_sub(int save_pos, int val2){
+  int first_value = atoi(tokens[save_pos+1].str);
+  val2 = first_value -(val2 - first_value);
+  return val2;
+}
+
+
+int eval(int p, int q, bool *success){
+  
+  int position = 0;
+  int save_pos = 0;
+  char priority = 0;
+
+  int val1,val2;
+  
+  if(p > q){
+    *success = false;
+    return 0;
+  }
+  else if (p == q){
+    *success = true;
+    return atoi(tokens[p].str);
+  }
+  else if(tokens[p].type == '(' && tokens[q].type == ')'){
+    return eval(p+1,q-1,success);
+  }
+  else if(tokens[p].type == '('){
+    save_pos = check_parenthese(p) + 1;
+  }
+
+  else{
+    position = p;
+
+    while(tokens[position].type != 0 && position <= q){
+      if(tokens[position].type == '*'){
+        if(priority == 0){
+          priority = 1;
+          save_pos = position;
+        }
+      }
+      else if(tokens[position].type == '/'){
+        if(priority == 0){
+          priority = 1;
+          save_pos = position;
+        }
+      }
+      else if(tokens[position].type == '+'){
+        if(priority == 0 || priority == 1){
+          priority = 2;
+          save_pos = position;
+        }
+      }
+      else if(tokens[position].type == '-'){
+        if(priority == 0 || priority == 1){
+          priority = 2;
+          save_pos = position;
+        }
+      }
+
+      position ++;
+    }
+
+    if(priority == 0) panic();
+  }
+
+  val1 = eval(p,save_pos - 1,success);
+  val2 = eval(save_pos + 1, q,success);
+
+  
+  
+
+  switch (tokens[save_pos].type){
+    case '+': *success = true; return val1 + val2; break;
+    case '-': *success = true; 
+      if(tokens[save_pos+1].type == TK_NUM)
+        val2 = rec_sub(save_pos,val2);
+    return val1 - val2; break;
+    case '*': *success = true; return val1 * val2; break;
+    case '/': *success = true; return val1 / val2; break;
+    default : *success = false; break;
+  }
+
+  *success = false;
+  return 0;
+}
+
+
+int expr(char *e, bool *success) {
   if (!make_token(e)) {
     *success = false;
     return 0;
   }
 
-  /* TODO: Insert codes to evaluate the expression. */
-  TODO();
-
-  return 0;
+  return eval(0,nr_token-1,success);
 }

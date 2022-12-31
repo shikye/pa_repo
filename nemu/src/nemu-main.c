@@ -20,6 +20,8 @@ void am_init_monitor();
 void engine_start();
 int is_exit_status_bad();
 
+extern word_t expr(char *e, bool *success);
+
 int main(int argc, char *argv[]) {
   /* Initialize the monitor. */
 #ifdef CONFIG_TARGET_AM
@@ -28,8 +30,22 @@ int main(int argc, char *argv[]) {
   init_monitor(argc, argv);
 #endif
 
+  FILE * fp = fopen("/home/nick/c/dd","r+");
+  char str[100] = {};
+  fscanf(fp,"%[^\n]",str);
+  bool for_success = 1;
+  bool *success = &for_success;
+
+  int value = expr(str,success);
+
+  printf("value is %d\n", value);
+
+
   /* Start engine. */
   engine_start();
+
+  
+
 
   return is_exit_status_bad();
 }
